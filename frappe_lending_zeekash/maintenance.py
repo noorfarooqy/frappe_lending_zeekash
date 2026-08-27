@@ -39,7 +39,7 @@ def dedupe_customers(apply=0):
 	for p in plan:
 		for dup in p["merge"]:
 			try:
-				frappe.rename_doc("Customer", dup, p["keep"], merge=True, force=True, ignore_permissions=True)
+				frappe.rename_doc("Customer", dup, p["keep"], merge=True, force=True)
 				merged += 1
 				print(f"merged {dup} -> {p['keep']}")
 			except Exception as exc:
