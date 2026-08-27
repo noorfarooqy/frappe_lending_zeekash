@@ -26,7 +26,20 @@ def after_migrate():
 						"Keep Rate of Interest at 0."
 					),
 				}
-			]
+			],
+			"Customer": [
+				{
+					"fieldname": "zeekash_customer_ref",
+					"label": "Zeekash Customer Ref",
+					"fieldtype": "Data",
+					"insert_after": "customer_name",
+					"read_only": 1,
+					"description": (
+						"The zeekash user this Customer maps to. The bridge reuses the same Customer "
+						"across that user's applications so they are not duplicated."
+					),
+				}
+			],
 		}
 	)
 	frappe.db.commit()

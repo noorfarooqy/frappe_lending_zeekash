@@ -38,6 +38,28 @@ def _normalize_phone(phone):
 	return phone if phone.startswith("+") else "+" + phone
 
 
+def _resolve_customer(payload):
+	"""Reuse an existing Customer for this zeekash user so repeat applications don't
+	create duplicates. Keyed on the stable zeekash customer uuid, then email, then phone."""
+	customer = payload.get("customer") or {}
+	ref = payload.get("customer_ref")
+	if ref:
+		found = frappe.db.get_value("Customer", {"zeekash_customer_ref": ref})
+		if found:
+			return found
+	email = customer.get("email")
+	if email:
+		found = frappe.db.get_value("Customer", {"email_id": email})
+		if found:
+			return found
+	phone = _normalize_phone(customer.get("phone"))
+	if phone:
+		found = frappe.db.get_value("Customer", {"mobile_no": phone})
+		if found:
+			return found
+	return None
+
+
 def _company_currency(company):
 	if settings.currency_override():
 		return settings.currency_override()
@@ -235,10 +257,21 @@ def submit_application(payload):
 	if is_term:
 		la.repayment_method = "Repay Over Number of Periods"
 		la.repayment_periods = tenor
+	# Reuse this user's Customer if one already exists; only leave `applicant` blank
+	# (which makes Frappe auto-create one) the very first time.
+	existing_customer = _resolve_customer(payload)
+	if existing_customer:
+		la.applicant = existing_customer
 	la.applicant_name = customer.get("name")
 	la.applicant_email_address = customer.get("email")
 	la.applicant_phone_number = _normalize_phone(customer.get("phone"))
 	la.insert(ignore_permissions=True)
+
+	# Stamp the customer (reused or freshly auto-created) with the zeekash ref so the
+	# next application by the same user reuses it instead of duplicating.
+	ref = payload.get("customer_ref")
+	if la.applicant and ref and not frappe.db.get_value("Customer", la.applicant, "zeekash_customer_ref"):
+		frappe.db.set_value("Customer", la.applicant, "zeekash_customer_ref", ref)
 
 	bridge.loan_application = la.name
 	bridge.external_ref = la.name
