@@ -10,6 +10,9 @@ app_license = "mit"
 # bespoke code in zeekash. See frappe_lending_zeekash/router.py.
 page_renderer = ["frappe_lending_zeekash.router.FinancingRouter"]
 
+# Add the Murabaha profit-rate custom field to Loan Product (never edits the lending app).
+after_migrate = "frappe_lending_zeekash.install.after_migrate"
+
 # Apps
 # ------------------
 

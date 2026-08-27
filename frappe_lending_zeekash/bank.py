@@ -51,7 +51,7 @@ def _resolve_product(slug):
 	row = frappe.db.get_value(
 		"Loan Product",
 		name,
-		["name", "rate_of_interest", "is_term_loan", "maximum_loan_amount", "company"],
+		["name", "rate_of_interest", "profit_rate", "is_term_loan", "maximum_loan_amount", "company"],
 		as_dict=True,
 	)
 	if not row:
@@ -93,7 +93,7 @@ def _build_offer(bridge):
 	tenor = max(1, int(bridge.tenor_months or 1))
 	is_term = bool(product.is_term_loan)
 
-	markup = _murabaha_markup(financed, product.rate_of_interest, tenor, is_term)
+	markup = _murabaha_markup(financed, product.profit_rate, tenor, is_term)
 	total = round(financed + markup, 2)
 	periods = tenor if is_term else 1
 	first_due = add_to_date(getdate(), months=1)
@@ -163,7 +163,7 @@ def products():
 	rows = frappe.get_all(
 		"Loan Product",
 		filters=filters,
-		fields=["name", "product_code", "product_name", "maximum_loan_amount", "rate_of_interest", "company"],
+		fields=["name", "product_code", "product_name", "maximum_loan_amount", "profit_rate", "company"],
 	)
 	currency = _company_currency(settings.company())
 	out = []
@@ -180,7 +180,7 @@ def products():
 				"max_amount": settings.money(max_amount if max_amount > 0 else 1_000_000_000),
 				"tenor_options": settings.tenor_options(),
 				"down_payment_percent": settings.down_payment_percent(),
-				"markup_basis": {"type": "flat_per_annum", "rate": round(flt(r.rate_of_interest) / 100, 6)},
+				"markup_basis": {"type": "flat_per_annum", "rate": round(flt(r.profit_rate) / 100, 6)},
 				"eligible_categories": settings.eligible_categories(),
 				"required_documents": [],
 				"late_policy": {"type": "none"},
@@ -220,7 +220,7 @@ def submit_application(payload):
 		return {"application_ref": bridge.external_ref, "status": "declined", "decline_reason": "exceeds_maximum_exposure"}
 
 	is_term = bool(product.is_term_loan)
-	markup = _murabaha_markup(financed, product.rate_of_interest, tenor, is_term)
+	markup = _murabaha_markup(financed, product.profit_rate, tenor, is_term)
 	sale_price = round(financed + markup, 2)
 	la = frappe.new_doc("Loan Application")
 	la.applicant_type = "Customer"
