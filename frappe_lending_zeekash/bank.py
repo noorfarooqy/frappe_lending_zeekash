@@ -12,7 +12,7 @@ import json
 import frappe
 from frappe.utils import add_to_date, flt, getdate, now_datetime
 
-from frappe_lending_zeekash import settings, webhooks
+from frappe_lending_zeekash import settings
 from frappe_lending_zeekash.errors import (
 	BridgeError,
 	contract_not_active,
@@ -382,7 +382,6 @@ def activate(contract_ref):
 		bridge.status = "active"
 		bridge.save(ignore_permissions=True)
 		frappe.db.commit()
-		webhooks.send("contract.activated", {"contract_ref": contract_ref, "status": "active"})
 
 	return _contract_dict(bridge)
 
@@ -418,9 +417,6 @@ def report_repayment(contract_ref, amount, idempotency_key=None, context=None):
 		bridge.settled_at = now_datetime()
 	bridge.save(ignore_permissions=True)
 	frappe.db.commit()
-
-	if bridge.status == "settled":
-		webhooks.send("contract.settled", {"contract_ref": contract_ref, "status": "settled"})
 
 	return {
 		"repayment_ref": rep.name,
@@ -477,6 +473,5 @@ def settle(contract_ref, amount, idempotency_key=None):
 	bridge.settled_at = now_datetime()
 	bridge.save(ignore_permissions=True)
 	frappe.db.commit()
-	webhooks.send("contract.settled", {"contract_ref": contract_ref, "status": "settled_early"})
 
 	return _contract_dict(bridge)
