@@ -47,6 +47,8 @@ def send(event_type, data):
 	try:
 		import requests
 
-		requests.post(url, data=body, headers=headers, timeout=10)
+		# Returned so recovery tooling can inspect the delivery; normal callers ignore it.
+		return requests.post(url, data=body, headers=headers, timeout=10)
 	except Exception as exc:
 		frappe.log_error(f"zeekash webhook {event_type} failed: {exc}", "Zeekash Bridge Webhook")
+		return None
