@@ -40,6 +40,12 @@ def down_payment_percent():
 	return float(conf("zeekash_down_payment_percent") or 0)
 
 
+def eligible_categories():
+	"""Asset categories the products accept — the app offers these and zeekash validates
+	against them. Overridable via site_config `zeekash_eligible_categories` (a list)."""
+	return conf("zeekash_eligible_categories") or ["electronics", "motor", "furniture", "appliances"]
+
+
 def offer_ttl_hours():
 	return int(conf("zeekash_offer_ttl_hours") or 72)
 

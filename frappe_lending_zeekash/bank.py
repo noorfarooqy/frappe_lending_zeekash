@@ -188,7 +188,7 @@ def products():
 				"tenor_options": settings.tenor_options(),
 				"down_payment_percent": settings.down_payment_percent(),
 				"markup_basis": {"type": "flat_per_annum", "rate": round(flt(r.rate_of_interest) / 100, 6)},
-				"eligible_categories": [],
+				"eligible_categories": settings.eligible_categories(),
 				"required_documents": [],
 				"late_policy": {"type": "none"},
 			}
