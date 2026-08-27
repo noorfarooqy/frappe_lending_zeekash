@@ -177,23 +177,12 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"frappe_lending_zeekash.tasks.all"
-# 	],
-# 	"daily": [
-# 		"frappe_lending_zeekash.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"frappe_lending_zeekash.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"frappe_lending_zeekash.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"frappe_lending_zeekash.tasks.monthly"
-# 	],
-# }
+# Redeliver webhooks zeekash could not accept (outbox retry with backoff).
+scheduler_events = {
+	"cron": {
+		"*/5 * * * *": ["frappe_lending_zeekash.webhooks.flush_outbox"],
+	},
+}
 
 # Testing
 # -------
