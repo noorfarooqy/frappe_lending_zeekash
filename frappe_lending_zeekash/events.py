@@ -75,6 +75,40 @@ def on_loan_repayment_submit(doc, method=None):
 		webhooks.send("contract.settled", {"contract_ref": doc.against_loan, "status": "settled"})
 
 
+def on_loan_repayment_cancel(doc, method=None):
+	"""A recorded repayment was cancelled in Frappe → tell zeekash to unmake it.
+
+	Frappe has already reversed the payment on its side; this rolls the bridge's own
+	totals back and fires `repayment.reversed` so zeekash un-allocates the matching rows.
+	If the payment had settled the loan, the bridge goes back to active.
+	"""
+	b = _bridge_for_loan(doc.get("against_loan"))
+	if not b:
+		return
+
+	amount = flt(doc.amount_paid)
+	paid = max(0.0, flt(b.amount_paid) - amount)
+	outstanding = max(0.0, flt(b.total_price) - paid)
+
+	updates = {"amount_paid": paid, "outstanding": outstanding}
+	if b.status in ("settled", "settled_early") and outstanding > 0:
+		updates["status"] = "active"
+		updates["settled_at"] = None
+	frappe.db.set_value("Zeekash Murabaha", b.name, updates)
+	frappe.db.commit()
+
+	webhooks.send(
+		"repayment.reversed",
+		{
+			"contract_ref": doc.against_loan,
+			"repayment_ref": doc.name,
+			"amount": settings.money(amount),
+			"outstanding_after": settings.money(outstanding),
+			"source": "direct_to_bank",
+		},
+	)
+
+
 def on_loan_cancel(doc, method=None):
 	"""The loan was cancelled in Frappe before it went live (a customer's pre-activation
 	cancel, actioned by the bank) → tell zeekash."""

@@ -17,7 +17,10 @@ after_migrate = "frappe_lending_zeekash.install.after_migrate"
 # fire the matching webhook to zeekash. Only zeekash-originated loans are touched.
 doc_events = {
 	"Loan Disbursement": {"on_submit": "frappe_lending_zeekash.events.on_loan_disbursement_submit"},
-	"Loan Repayment": {"on_submit": "frappe_lending_zeekash.events.on_loan_repayment_submit"},
+	"Loan Repayment": {
+		"on_submit": "frappe_lending_zeekash.events.on_loan_repayment_submit",
+		"on_cancel": "frappe_lending_zeekash.events.on_loan_repayment_cancel",
+	},
 	"Loan": {
 		"on_update_after_submit": "frappe_lending_zeekash.events.on_loan_update",
 		"on_cancel": "frappe_lending_zeekash.events.on_loan_cancel",
