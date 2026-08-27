@@ -73,58 +73,51 @@ def _bridge_by_contract(contract_ref):
 	return frappe.get_doc("Zeekash Murabaha", name)
 
 
-def _build_offer(bridge):
-	"""Read the Murabaha terms from Frappe's schedule and shape a reconciling offer.
+def _murabaha_markup(financed, rate, tenor, is_term_loan):
+	"""The fixed Murabaha profit: the product's rate applied FLAT to the cost and
+	proportional to tenor. It is agreed once and folded into the sale price — it never
+	compounds and is never charged on a running balance, which is what separates it from
+	interest (riba). A demand (non-term) product carries no markup."""
+	if not is_term_loan or tenor <= 0:
+		return 0.0
+	return round(flt(financed) * (flt(rate) / 100.0) * (tenor / 12.0), 2)
 
-	Rounding is folded so that financed == cost - down, total == financed + markup, and
-	Σ schedule == total, exactly (zeekash rejects an offer that does not reconcile)."""
+
+def _build_offer(bridge):
+	"""Price the Murabaha: cost + a flat markup, folded into the sale price and split
+	into equal instalments (the last absorbs rounding). The markup is the bank's, applied
+	flat — never Frappe's reducing-balance interest. Reconciles exactly: financed ==
+	cost - down, total == financed + markup, Σ schedule == total."""
 	financed = flt(bridge.financed_amount, 2)
 	product = _resolve_product(bridge.product_slug)
-	rate = flt(product.rate_of_interest)
-	tenor = int(bridge.tenor_months or 0)
+	tenor = max(1, int(bridge.tenor_months or 1))
+	is_term = bool(product.is_term_loan)
+
+	markup = _murabaha_markup(financed, product.rate_of_interest, tenor, is_term)
+	total = round(financed + markup, 2)
+	periods = tenor if is_term else 1
 	first_due = add_to_date(getdate(), months=1)
 
-	rows = []
-	if product.is_term_loan and tenor > 0:
-		schedule = frappe.new_doc("Loan Repayment Schedule")
-		schedule.loan_product = product.name
-		schedule.repayment_frequency = "Monthly"
-		schedule.repayment_method = "Repay Over Number of Periods"
-		schedule.repayment_periods = tenor
-		schedule.rate_of_interest = rate
-		schedule.posting_date = getdate()
-		schedule.repayment_start_date = first_due
-		schedule.loan_amount = financed
-		schedule.current_principal_amount = financed
-		schedule.moratorium_tenure = 0
-		schedule.moratorium_type = ""
-		schedule.repayment_schedule_type = product.get("repayment_schedule_type") or frappe.db.get_value(
-			"Loan Product", product.name, "repayment_schedule_type"
-		)
-		schedule.validate()
-		for r in schedule.get("repayment_schedule"):
-			amount = flt(r.total_payment, 2)
-			cost = flt(r.principal_amount, 2)
-			rows.append({"date": getdate(r.payment_date), "amount": amount, "cost": cost})
-	else:
-		# Demand / interest-free product: a single bullet payment of the financed amount.
-		rows.append({"date": first_due, "amount": financed, "cost": financed})
-
-	total = flt(sum(r["amount"] for r in rows), 2)
-	markup = flt(total - financed, 2)
-
+	base = round(total / periods, 2)
+	markup_base = round(markup / periods, 2)
 	schedule_out = []
-	for i, r in enumerate(rows, start=1):
-		markup_component = flt(r["amount"] - r["cost"], 2)
+	amt_acc = 0.0
+	mk_acc = 0.0
+	for i in range(1, periods + 1):
+		is_last = i == periods
+		amount = round(total - amt_acc, 2) if is_last else base
+		mk = round(markup - mk_acc, 2) if is_last else markup_base
 		schedule_out.append(
 			{
 				"sequence": i,
-				"due_date": str(r["date"]),
-				"amount": settings.money(r["amount"]),
-				"cost_component": settings.money(r["cost"]),
-				"markup_component": settings.money(markup_component),
+				"due_date": str(add_to_date(first_due, months=i - 1)),
+				"amount": settings.money(amount),
+				"cost_component": settings.money(round(amount - mk, 2)),
+				"markup_component": settings.money(mk),
 			}
 		)
+		amt_acc = round(amt_acc + amount, 2)
+		mk_acc = round(mk_acc + mk, 2)
 
 	return {
 		"offer_ref": "FLZOFF-" + (bridge.external_ref or bridge.name),
@@ -137,7 +130,7 @@ def _build_offer(bridge):
 		"tenor_months": tenor,
 		"payment_frequency": "monthly",
 		"instalment_amount": schedule_out[0]["amount"] if schedule_out else settings.money(0),
-		"first_due_date": str(rows[0]["date"]),
+		"first_due_date": str(first_due),
 		"schedule": schedule_out,
 		"expires_at": _iso(add_to_date(now_datetime(), hours=settings.offer_ttl_hours())),
 	}
@@ -227,13 +220,17 @@ def submit_application(payload):
 		return {"application_ref": bridge.external_ref, "status": "declined", "decline_reason": "exceeds_maximum_exposure"}
 
 	is_term = bool(product.is_term_loan)
+	markup = _murabaha_markup(financed, product.rate_of_interest, tenor, is_term)
+	sale_price = round(financed + markup, 2)
 	la = frappe.new_doc("Loan Application")
 	la.applicant_type = "Customer"
 	la.company = product.company or settings.company()
 	la.loan_product = product.name
 	la.posting_date = getdate()
-	la.loan_amount = financed
-	la.rate_of_interest = flt(product.rate_of_interest)
+	# Murabaha: the customer owes cost + fixed markup (the sale price), booked at 0% —
+	# the profit is in the price, never charged as interest on the running balance.
+	la.loan_amount = sale_price
+	la.rate_of_interest = 0
 	la.is_term_loan = 1 if is_term else 0
 	if is_term:
 		la.repayment_method = "Repay Over Number of Periods"
